@@ -1,0 +1,1 @@
+"""Wayora automated test suite."""

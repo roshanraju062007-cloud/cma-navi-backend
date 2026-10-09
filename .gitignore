@@ -1,0 +1,37 @@
+# Python byte code
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+venv/
+.venv/
+env/
+ENV/
+*.env
+!.env.example
+
+# Database (local SQLite for tests if used, never PostgreSQL dumps)
+*.sqlite3
+*.db
+
+# Media & static files
+/media/
+/staticfiles/
+
+# Logs
+*.log
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Test & coverage
+.coverage
+htmlcov/
+.pytest_cache/
