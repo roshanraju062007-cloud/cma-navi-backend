@@ -129,3 +129,26 @@ class TenantIsolationTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["tenant"]["name"], "Alpha University")
+
+    def test_tenant_admin_cannot_update_other_tenant(self):
+        """Tenant A admin cannot modify Tenant B's metadata."""
+        self.client.force_authenticate(user=self.admin_a)
+        url = reverse("tenant-detail", kwargs={"pk": str(self.tenant_b.id)})
+        payload = {"name": "Hacked Tenant Name"}
+        response = self.client.patch(url, payload, format="json")
+        # TenantScoped queryset excludes other tenants, returning 404
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_user_cannot_obtain_download_url_for_other_tenant_blueprint(self):
+        """User A cannot request a temporary download URL for Tenant B's blueprint."""
+        self.client.force_authenticate(user=self.user_a)
+        url = reverse("blueprint-download-url", kwargs={"pk": str(self.blueprint_b.id)})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unauthenticated_requests_blocked(self):
+        """Unauthenticated requests cannot access protected tenant or blueprint resources."""
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get(reverse("tenant-list")).status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(self.client.get(reverse("blueprint-list")).status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(self.client.get(reverse("user-management-list")).status_code, status.HTTP_401_UNAUTHORIZED)

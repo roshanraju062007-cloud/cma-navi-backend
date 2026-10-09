@@ -28,10 +28,17 @@ class BlueprintViewSet(viewsets.ModelViewSet):
     """
     Endpoints for blueprint metadata management and presigned storage access.
     Enforces strict tenant isolation: users only access blueprints for their tenant.
+    Creation/Updates require Tenant Admin or Super Admin permissions.
     """
 
     serializer_class = BlueprintMetadataSerializer
-    permission_classes = [IsAuthenticated, IsTenantMember]
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy", "request_upload_url"]:
+            permission_classes = [IsAuthenticated, IsTenantAdmin]
+        else:
+            permission_classes = [IsAuthenticated, IsTenantMember]
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         return BlueprintMetadata.objects.for_user(self.request.user)
@@ -129,9 +136,20 @@ def local_storage_upload_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    target_dir = settings.BASE_DIR / "media" / os.path.dirname(object_key)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = settings.BASE_DIR / "media" / object_key
+    from pathlib import Path
+    media_root = (settings.BASE_DIR / "media").resolve()
+    target_path = (media_root / object_key).resolve()
+
+    # Prevent path traversal attacks escaping media_root
+    try:
+        target_path.relative_to(media_root)
+    except ValueError:
+        return Response(
+            {"success": False, "error": "Access denied: Path traversal detected."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(target_path, "wb+") as dest:
         for chunk in file_obj.chunks():
@@ -151,7 +169,7 @@ def local_storage_upload_view(request):
 @permission_classes([AllowAny])
 def local_storage_download_view(request):
     """
-    Local private storage download view with signed token verification.
+    Local private storage download view with signed token verification and path safety.
     """
     token = request.query_params.get("token")
     if not token:
@@ -166,8 +184,20 @@ def local_storage_download_view(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    file_path = settings.BASE_DIR / "media" / object_key
-    if not file_path.exists():
+    from pathlib import Path
+    media_root = (settings.BASE_DIR / "media").resolve()
+    file_path = (media_root / object_key).resolve()
+
+    # Prevent path traversal attacks escaping media_root
+    try:
+        file_path.relative_to(media_root)
+    except ValueError:
+        return Response(
+            {"success": False, "error": "Access denied: Path traversal detected."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not file_path.exists() or not file_path.is_file():
         raise Http404("Blueprint file not found in storage.")
 
     with open(file_path, "rb") as f:

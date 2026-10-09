@@ -8,6 +8,7 @@ from .models import User, UserRole
 from .serializers import (
     UserSerializer,
     UserRegistrationSerializer,
+    AdminUserCreateSerializer,
     CustomTokenObtainPairSerializer,
     ChangePasswordSerializer,
     UserProfileUpdateSerializer,
@@ -16,7 +17,7 @@ from .permissions import IsSuperAdmin, IsTenantAdmin, CanManageUser
 
 @extend_schema(
     summary="Register a new user account",
-    description="Registers a new user and optionally assigns them to a tenant organization.",
+    description="Registers a new standard user account. Privileged roles and tenant memberships are assigned exclusively through authorized administrative workflows.",
     responses={201: UserSerializer},
 )
 class RegisterView(generics.CreateAPIView):
@@ -128,8 +129,12 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     """
 
     queryset = User.objects.all()
-    serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, CanManageUser]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AdminUserCreateSerializer
+        return UserSerializer
 
     def get_queryset(self):
         user = self.request.user

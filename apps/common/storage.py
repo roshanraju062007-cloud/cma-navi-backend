@@ -38,13 +38,19 @@ class BlueprintStorageService:
 
     def generate_storage_key(self, tenant_id: str, file_name: str) -> str:
         """
-        Generates a partitioned, collision-free private object key.
+        Generates a partitioned, collision-free, path-traversal-safe private object key.
         Format: blueprints/{tenant_id}/{year}/{month}/{unique_id}_{clean_filename}
         """
+        import re
         now = datetime.utcnow()
-        clean_name = os.path.basename(file_name).replace(" ", "_")
+        # Strictly strip directories and remove characters outside alphanumeric, dot, underscore, dash
+        raw_base = os.path.basename(file_name)
+        clean_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", raw_base)
+        if not clean_name or clean_name.startswith("."):
+            clean_name = f"blueprint_{uuid.uuid4().hex[:8]}.png"
         unique_prefix = uuid.uuid4().hex[:12]
-        return f"blueprints/{tenant_id}/{now.year}/{now.month:02d}/{unique_prefix}_{clean_name}"
+        safe_tenant = re.sub(r"[^a-zA-Z0-9-]", "_", str(tenant_id))
+        return f"blueprints/{safe_tenant}/{now.year}/{now.month:02d}/{unique_prefix}_{clean_name}"
 
     def generate_presigned_upload_url(
         self, tenant_id: str, file_name: str, content_type: str = "image/png"

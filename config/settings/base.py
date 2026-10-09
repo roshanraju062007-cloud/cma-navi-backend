@@ -13,11 +13,26 @@ sys.path.insert(0, str(BASE_DIR / "apps"))
 # Load .env file
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY", "insecure-dev-secret-key-change-in-production"
-)
+import secrets
+from django.core.exceptions import ImproperlyConfigured
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
+raw_secret = os.environ.get("DJANGO_SECRET_KEY", "").strip()
+env_name = os.environ.get("DJANGO_ENV", "development").lower()
+is_production = env_name == "production"
+
+if not raw_secret:
+    if is_production:
+        raise ImproperlyConfigured(
+            "CRITICAL SECURITY ERROR: DJANGO_SECRET_KEY environment variable is missing. "
+            "A secure secret key must be explicitly configured in production."
+        )
+    # For local development or tests without an explicit key, generate an ephemeral,
+    # high-entropy key unique to this running process so no known static fallback is used.
+    SECRET_KEY = secrets.token_urlsafe(50)
+else:
+    SECRET_KEY = raw_secret
+
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes") and not is_production
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -164,12 +179,15 @@ REST_FRAMEWORK = {
 # Simple JWT Configuration
 ACCESS_MINUTES = int(os.environ.get("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", "60"))
 REFRESH_DAYS = int(os.environ.get("JWT_REFRESH_TOKEN_LIFETIME_DAYS", "7"))
+JWT_SIGNING_KEY = os.environ.get("JWT_SIGNING_KEY", "").strip() or SECRET_KEY
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=ACCESS_MINUTES),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=REFRESH_DAYS),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
 }
@@ -189,12 +207,16 @@ SPECTACULAR_SETTINGS = {
 }
 
 # CORS configuration
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
 if cors_origins:
     CORS_ALLOWED_ORIGINS = [
         origin.strip() for origin in cors_origins.split(",") if origin.strip()
     ]
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOWED_ORIGINS = []
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Blueprint Storage Configuration (AWS S3 / Private Object Storage)

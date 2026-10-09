@@ -35,7 +35,65 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    """Serializer for registering a new user."""
+    """
+    Serializer for public self-registration.
+    SECURITY HARDENED:
+    - Strictly creates only standard 'user' role accounts.
+    - Never accepts or honors client-supplied 'role' or 'tenant_id'.
+    - New accounts are initialized without tenant association until explicitly
+      assigned by an authorized tenant administrator.
+    """
+
+    password = serializers.CharField(
+        write_only=True, required=True, validators=[validate_password]
+    )
+    password_confirm = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "password",
+            "password_confirm",
+            "first_name",
+            "last_name",
+            "phone_number",
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "Password fields do not match."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("password_confirm")
+        # Ensure client cannot pass 'role' or 'tenant' under any circumstance
+        validated_data.pop("role", None)
+        validated_data.pop("tenant", None)
+        validated_data.pop("tenant_id", None)
+        password = validated_data.pop("password")
+
+        user = User.objects.create_user(
+            password=password,
+            role=UserRole.USER,
+            tenant=None,
+            **validated_data,
+        )
+        return user
+
+
+class AdminUserCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for administrative user creation.
+    Only accessible by authorized administrators (Tenant Admin and Super Admin).
+    Enforces strict role assignment boundaries:
+    - Tenant Admins can only create staff, security, or regular users within their own tenant.
+    - Super Admins can create any role across any tenant.
+    """
 
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password]
@@ -59,27 +117,42 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate(self, attrs):
+        request = self.context.get("request")
+        if not request or not request.user or not request.user.is_authenticated:
+            raise serializers.ValidationError("Authentication required.")
+
+        requester = request.user
+        role = attrs.get("role", UserRole.USER)
+        tenant_id = attrs.get("tenant_id")
+
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError(
                 {"password_confirm": "Password fields do not match."}
             )
 
-        tenant_id = attrs.get("tenant_id")
-        role = attrs.get("role", UserRole.USER)
-
-        # Non-super_admin users must be associated with a tenant
-        if role != UserRole.SUPER_ADMIN and tenant_id:
-            try:
-                attrs["tenant"] = Tenant.objects.get(id=tenant_id, is_active=True)
-            except Tenant.DoesNotExist:
+        if requester.is_super_admin:
+            # Super Admin can assign any tenant
+            if tenant_id:
+                try:
+                    attrs["tenant"] = Tenant.objects.get(id=tenant_id, is_active=True)
+                except Tenant.DoesNotExist:
+                    raise serializers.ValidationError(
+                        {"tenant_id": "Specified tenant does not exist or is inactive."}
+                    )
+            else:
+                attrs["tenant"] = None
+        elif requester.is_tenant_admin:
+            # Tenant Admin cannot create super_admin or tenant_admin
+            if role in [UserRole.SUPER_ADMIN, UserRole.TENANT_ADMIN]:
                 raise serializers.ValidationError(
-                    {"tenant_id": "Specified tenant does not exist or is inactive."}
+                    {"role": "Tenant administrators cannot create administrative accounts."}
                 )
-        elif role != UserRole.SUPER_ADMIN and not tenant_id:
-            # If registering a regular user without tenant_id, allowed as general visitor
-            attrs["tenant"] = None
+            # Tenant Admin must bind new user strictly to their own tenant
+            attrs["tenant"] = requester.tenant
         else:
-            attrs["tenant"] = None
+            raise serializers.ValidationError(
+                "You do not have permission to create users via this endpoint."
+            )
 
         return attrs
 

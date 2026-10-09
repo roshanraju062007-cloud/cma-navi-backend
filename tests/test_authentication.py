@@ -15,6 +15,11 @@ class AuthenticationTests(TestCase):
             slug="apex-engineering",
             tenant_type="college",
         )
+        self.other_tenant = Tenant.objects.create(
+            name="Metropolis IT Park",
+            slug="metropolis-park",
+            tenant_type="it_park",
+        )
         self.user_password = "SecurePassword123!"
         self.user = User.objects.create_user(
             email="student@apex.edu",
@@ -24,9 +29,20 @@ class AuthenticationTests(TestCase):
             role=UserRole.USER,
             tenant=self.tenant,
         )
+        self.tenant_admin = User.objects.create_user(
+            email="admin@apex.edu",
+            password=self.user_password,
+            role=UserRole.TENANT_ADMIN,
+            tenant=self.tenant,
+        )
+        self.super_admin = User.objects.create_superuser(
+            email="superadmin@wayora.io",
+            password=self.user_password,
+            role=UserRole.SUPER_ADMIN,
+        )
 
     def test_user_registration_success(self):
-        """Test successful registration of a new user."""
+        """Test successful legitimate registration of a standard user."""
         url = reverse("auth-register")
         payload = {
             "email": "visitor@example.com",
@@ -35,14 +51,118 @@ class AuthenticationTests(TestCase):
             "first_name": "John",
             "last_name": "Smith",
             "phone_number": "+1234567890",
-            "role": "user",
-            "tenant_id": str(self.tenant.id),
         }
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data["success"])
         self.assertEqual(response.data["user"]["email"], "visitor@example.com")
-        self.assertTrue(User.objects.filter(email="visitor@example.com").exists())
+        self.assertEqual(response.data["user"]["role"], UserRole.USER)
+        self.assertIsNone(response.data["user"]["tenant"])
+
+        created_user = User.objects.get(email="visitor@example.com")
+        self.assertEqual(created_user.role, UserRole.USER)
+        self.assertIsNone(created_user.tenant)
+        self.assertFalse(created_user.is_staff)
+        self.assertFalse(created_user.is_superuser)
+
+    def test_public_registration_privilege_escalation_blocked(self):
+        """
+        SECURITY REGRESSION:
+        Verify that public registration rejects/ignores any attempted privileged roles
+        (super_admin, tenant_admin, staff, security) and strictly creates a normal 'user'.
+        """
+        url = reverse("auth-register")
+        malicious_roles = [
+            UserRole.SUPER_ADMIN,
+            UserRole.TENANT_ADMIN,
+            UserRole.STAFF,
+            UserRole.SECURITY,
+        ]
+
+        for idx, role in enumerate(malicious_roles):
+            email = f"attacker_{idx}@example.com"
+            payload = {
+                "email": email,
+                "password": "HackerPassword123!",
+                "password_confirm": "HackerPassword123!",
+                "first_name": "Malicious",
+                "last_name": "Actor",
+                "role": role,
+            }
+            response = self.client.post(url, payload, format="json")
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+            # User must strictly be created as standard USER
+            user = User.objects.get(email=email)
+            self.assertEqual(user.role, UserRole.USER)
+            self.assertFalse(user.is_staff)
+            self.assertFalse(user.is_superuser)
+
+    def test_public_registration_tenant_assignment_blocked(self):
+        """
+        SECURITY REGRESSION:
+        Verify that public registration prevents self-assigning to arbitrary tenants.
+        """
+        url = reverse("auth-register")
+        payload = {
+            "email": "arbitrary_tenant@example.com",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "first_name": "Sneaky",
+            "last_name": "User",
+            "tenant_id": str(self.tenant.id),
+        }
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        user = User.objects.get(email="arbitrary_tenant@example.com")
+        self.assertIsNone(user.tenant)
+
+    def test_ordinary_user_cannot_create_users_via_admin_endpoint(self):
+        """Ordinary users cannot access the administrative user creation endpoint."""
+        self.client.force_authenticate(user=self.user)
+        url = reverse("user-management-list")
+        payload = {
+            "email": "unauthorized_user@example.com",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": "staff",
+        }
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tenant_admin_cannot_create_super_admin(self):
+        """Tenant admins cannot escalate privileges by creating super_admin accounts."""
+        self.client.force_authenticate(user=self.tenant_admin)
+        url = reverse("user-management-list")
+        payload = {
+            "email": "fake_super@apex.edu",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": UserRole.SUPER_ADMIN,
+        }
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("role", response.data["error"]["details"])
+
+    def test_tenant_admin_can_create_staff_in_own_tenant(self):
+        """Tenant admins can create staff users within their assigned tenant."""
+        self.client.force_authenticate(user=self.tenant_admin)
+        url = reverse("user-management-list")
+        payload = {
+            "email": "new_faculty@apex.edu",
+            "password": "FacultyPassword123!",
+            "password_confirm": "FacultyPassword123!",
+            "first_name": "Professor",
+            "last_name": "X",
+            "role": UserRole.STAFF,
+        }
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        staff_user = User.objects.get(email="new_faculty@apex.edu")
+        self.assertEqual(staff_user.role, UserRole.STAFF)
+        self.assertEqual(staff_user.tenant, self.tenant)
 
     def test_registration_password_mismatch(self):
         """Test registration failure when password confirmation differs."""
