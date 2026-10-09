@@ -32,6 +32,8 @@ class BlueprintViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = BlueprintMetadataSerializer
+    search_fields = ["title", "original_filename"]
+    ordering_fields = ["title", "version", "created_at"]
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy", "request_upload_url"]:
@@ -41,7 +43,14 @@ class BlueprintViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
     def get_queryset(self):
-        return BlueprintMetadata.objects.for_user(self.request.user)
+        qs = BlueprintMetadata.objects.for_user(self.request.user)
+        floor_id = self.request.query_params.get("floor_id")
+        if floor_id:
+            qs = qs.filter(floor_id=floor_id)
+        is_active = self.request.query_params.get("is_active")
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active.lower() in ("true", "1"))
+        return qs
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -81,14 +90,18 @@ class BlueprintViewSet(viewsets.ModelViewSet):
             content_type=content_type,
         )
 
+        metadata = {
+            "title": serializer.validated_data["title"],
+            "version": serializer.validated_data["version"],
+        }
+        if serializer.validated_data.get("floor_id"):
+            metadata["floor_id"] = str(serializer.validated_data["floor_id"])
+
         return Response(
             {
                 "success": True,
                 "upload": upload_data,
-                "metadata": {
-                    "title": serializer.validated_data["title"],
-                    "version": serializer.validated_data["version"],
-                },
+                "metadata": metadata,
             }
         )
 

@@ -34,6 +34,7 @@ class BlueprintMetadataSerializer(serializers.ModelSerializer):
             "file_size_bytes",
             "mime_type",
             "version",
+            "floor_id",
             "checksum_sha256",
             "uploaded_by",
             "uploaded_by_email",
@@ -95,6 +96,7 @@ class BlueprintUploadRequestSerializer(serializers.Serializer):
     content_type = serializers.CharField(max_length=100, default="image/png")
     title = serializers.CharField(max_length=255, required=True)
     version = serializers.IntegerField(default=1, min_value=1)
+    floor_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_filename(self, value):
         clean_name = os.path.basename(value)

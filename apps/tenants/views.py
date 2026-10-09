@@ -24,6 +24,8 @@ class TenantViewSet(viewsets.ModelViewSet):
 
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
+    search_fields = ["name", "slug", "domain", "contact_email"]
+    ordering_fields = ["name", "created_at"]
 
     def get_permissions(self):
         if self.action in ["create", "destroy"]:
@@ -39,10 +41,16 @@ class TenantViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Tenant.objects.none()
         if getattr(user, "is_super_admin", False) or user.is_superuser:
-            return Tenant.objects.all()
-        if user.tenant:
-            return Tenant.objects.filter(id=user.tenant_id)
-        return Tenant.objects.none()
+            qs = Tenant.objects.all()
+        elif user.tenant:
+            qs = Tenant.objects.filter(id=user.tenant_id)
+        else:
+            return Tenant.objects.none()
+
+        tenant_type = self.request.query_params.get("tenant_type")
+        if tenant_type:
+            qs = qs.filter(tenant_type=tenant_type)
+        return qs
 
     @extend_schema(
         summary="Get details for current user's tenant organization",
