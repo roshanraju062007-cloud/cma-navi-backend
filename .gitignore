@@ -1,46 +1,37 @@
-# Byte-compiled / optimized / DLL files
+# Python byte code
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
+# Environments
 venv/
 .venv/
 env/
 ENV/
+*.env
+!.env.example
 
-# Environment variables & secrets
-.env
-.env.local
-.env.*.local
+# Database (local SQLite for tests if used, never PostgreSQL dumps)
+*.sqlite3
+*.db
 
-# IDEs and editors
+# Media & static files
+/media/
+/staticfiles/
+
+# Logs
+*.log
+
+# IDE and OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS files
 .DS_Store
 Thumbs.db
+
+# Test & coverage
+.coverage
+htmlcov/
+.pytest_cache/
