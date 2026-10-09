@@ -130,6 +130,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated, CanManageUser]
+    search_fields = ["email", "first_name", "last_name", "phone_number"]
+    ordering_fields = ["email", "created_at"]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -141,7 +143,13 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return User.objects.none()
         if getattr(user, "is_super_admin", False) or user.is_superuser:
-            return User.objects.all().select_related("tenant")
-        if user.tenant:
-            return User.objects.filter(tenant=user.tenant).select_related("tenant")
-        return User.objects.filter(id=user.id)
+            qs = User.objects.all().select_related("tenant")
+        elif user.tenant:
+            qs = User.objects.filter(tenant=user.tenant).select_related("tenant")
+        else:
+            qs = User.objects.filter(id=user.id)
+
+        role = self.request.query_params.get("role")
+        if role:
+            qs = qs.filter(role=role)
+        return qs

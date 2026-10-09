@@ -30,6 +30,12 @@ class BlueprintMetadata(TenantScopedModel):
         blank=True,
         related_name="uploaded_blueprints",
     )
+    floor_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Associated floor UUID (linked to Pradeesh's campus module)",
+    )
 
     class Meta:
         verbose_name = "Blueprint Metadata"

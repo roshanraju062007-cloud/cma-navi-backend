@@ -139,3 +139,33 @@ class BlueprintStorageTests(TestCase):
         self.assertEqual(get_resp.data["title"], "Block B 1st Floor")
         self.assertIsNotNone(get_resp.data["download_url"])
         self.assertIn("download_url", get_resp.data["download_url"])
+
+    def test_blueprint_floor_id_filtering(self):
+        """Test filtering blueprints by floor_id for Pradeesh's campus module integration."""
+        import uuid
+        target_floor_id = uuid.uuid4()
+        other_floor_id = uuid.uuid4()
+
+        bp1 = BlueprintMetadata.objects.create(
+            tenant=self.tenant,
+            title="Floor 1 Layout",
+            file_key=f"blueprints/{self.tenant.id}/2026/10/f1.png",
+            original_filename="f1.png",
+            floor_id=target_floor_id,
+            uploaded_by=self.admin,
+        )
+        bp2 = BlueprintMetadata.objects.create(
+            tenant=self.tenant,
+            title="Floor 2 Layout",
+            file_key=f"blueprints/{self.tenant.id}/2026/10/f2.png",
+            original_filename="f2.png",
+            floor_id=other_floor_id,
+            uploaded_by=self.admin,
+        )
+
+        url = f"{reverse('blueprint-list')}?floor_id={target_floor_id}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], str(bp1.id))
