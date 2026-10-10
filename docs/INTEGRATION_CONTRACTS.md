@@ -63,6 +63,22 @@ BaseModel (UUIDModel + TimeStampedModel)
      - `rest_framework.filters.SearchFilter` (`?search=<query>`)
      - `rest_framework.filters.OrderingFilter` (`?ordering=-created_at`)
 
+6. **Authoritative User Roles & Permission Classes**:
+   | Database String (`role`) | Enum Constant (`UserRole`) | Display Name | Corresponding Permission Class |
+   |---|---|---|---|
+   | `super_admin` | `UserRole.SUPER_ADMIN` | Super Admin | `apps.authentication.permissions.IsSuperAdmin` |
+   | `tenant_admin` | `UserRole.TENANT_ADMIN` | Tenant Admin | `apps.authentication.permissions.IsTenantAdmin` |
+   | `staff` | `UserRole.STAFF` | Staff / Faculty | `apps.authentication.permissions.IsStaffUser` |
+   | `security` | `UserRole.SECURITY` | Security Personnel | `apps.authentication.permissions.IsSecurityUser` |
+   | `user` | `UserRole.USER` | General User / Visitor | `rest_framework.permissions.IsAuthenticated` |
+
+   > [!IMPORTANT]
+   > The security role string in the database and JWT payload is strictly `"security"`, **never** `"security_guard"`. Bhuvaneshwari's endpoints must check `request.user.role == "security"` or utilize `IsSecurityUser` / `IsStaffOrSecurity`.
+
+7. **Blueprint Action URLs & Router Conventions**:
+   - `POST /api/v1/blueprints/request_upload_url/` (`name='blueprint-request-upload-url'`)
+   - `GET /api/v1/blueprints/<uuid:id>/download_url/` (`name='blueprint-download-url'`)
+
 ---
 
 ## 2. Interface Contracts with Pradeesh (Campus & Navigation Module)
@@ -278,9 +294,8 @@ class SavedParking(TenantScopedModel):
 | *PLANNED* | `GET/POST`| `/api/v1/pois/` | Pradeesh | Points of interest | Tenant Member / Admin |
 | *PLANNED* | `POST` | `/api/v1/navigation/route/` | Pradeesh | Indoor/outdoor shortest path route | Authenticated |
 | *PLANNED* | `POST` | `/api/v1/visitors/passes/` | Bhuvaneshwari | Request visitor pass | User / Staff |
-| *PLANNED* | `POST` | `/api/v1/visitors/passes/{id}/approve/` | Bhuvaneshwari | Host approval | Host / Admin |
-| *PLANNED* | `POST` | `/api/v1/visitors/verify-qr/` | Bhuvaneshwari | Gate QR validation | Security Guard |
-| *PLANNED* | `POST` | `/api/v1/visitors/check-in/` | Bhuvaneshwari | Gate check-in log | Security Guard |
+| *PLANNED* | `POST` | `/api/v1/visitors/verify-qr/` | Bhuvaneshwari | Gate QR validation | `security` (`IsSecurityUser`) |
+| *PLANNED* | `POST` | `/api/v1/visitors/check-in/` | Bhuvaneshwari | Gate check-in log | `security` (`IsSecurityUser`) |
 | *PLANNED* | `POST` | `/api/v1/groups/` | Bhuvaneshwari | Create group session | Authenticated |
 | *PLANNED* | `POST` | `/api/v1/groups/{code}/ping-location/` | Bhuvaneshwari | Update live coordinates | Group Member |
 | *PLANNED* | `POST` | `/api/v1/parking/saved/` | Bhuvaneshwari | Save vehicle parking spot | Authenticated |
