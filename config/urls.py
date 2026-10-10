@@ -21,6 +21,7 @@ api_v1_patterns = [
     path("auth/", include("apps.authentication.urls")),
     path("tenants/", include("apps.tenants.urls")),
     path("blueprints/", include("apps.blueprints.urls")),
+    path("visitors/", include("apps.visitors.urls")),
     path("health/", health_check, name="api-v1-health"),
     # OpenAPI Schema & Interactive Documentation
     path("schema/", SpectacularAPIView.as_view(), name="openapi-schema"),

@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.tenants",
     "apps.authentication",
     "apps.blueprints",
+    "apps.visitors",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -118,13 +119,15 @@ DATABASES = {
 }
 
 # If running automated test suite and no test postgres is explicitly forced, use fast in-memory database
-if "test" in sys.argv and not os.environ.get("USE_POSTGRES_FOR_TESTS"):
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": ":memory:",
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+    if not os.environ.get("USE_POSTGRES_FOR_TESTS"):
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": ":memory:",
+            }
         }
-    }
 
 # Custom User Model
 AUTH_USER_MODEL = "authentication.User"
